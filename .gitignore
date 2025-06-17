@@ -1,0 +1,59 @@
+# STM32CubeIDE / Eclipse CDT related
+.metadata/
+Debug/
+Release/
+build/
+*.launch
+*.prefs
+.cproject
+.project # プロジェクトファイルを共有しない場合。共有する場合はコメントアウト。
+.settings/
+
+# Build artifacts
+*.o
+*.elf
+*.bin
+*.hex
+*.map
+*.axf
+*.srec
+*.list
+*.lst
+*.expand
+*.bak
+*.stackdump
+
+# Object files
+*.obj
+*.o
+*.d
+
+# Libraries
+*.lib
+*.a
+
+# Executables
+*.exe
+
+# Temp files
+*~
+*.tmp
+
+# Debugger files
+*.DS_Store
+Thumbs.db
+
+# CubeMX generated files that are typically not modified by user (or regenerated)
+# Adjust based on your workflow. If you modify these, remove them from .gitignore.
+# startup_stm32xxxx.s
+# syscalls.c
+# Drivers/CMSIS/Device/ST/STM32Fxxx/Source/Templates/gcc/startup_stm32xxxx.s
+# Src/sysmem.c (If generated and not modified)
+# Src/syscalls.c (If generated and not modified)
+
+# HTML Reports from CubeMX or other tools
+*.html
+*.pdf
+
+# User specific files
+*.user

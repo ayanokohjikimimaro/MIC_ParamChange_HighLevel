@@ -27,6 +27,7 @@
 #include <string.h>
 #include <stdlib.h> // For atoi
 #include "stm32f7xx.h" // ★★★ この行を追加 ★★★
+#include "stm32f767xx.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -236,19 +237,25 @@ void CDC_On_Receive(uint8_t* Buf, uint32_t Len) {
 
 static HAL_StatusTypeDef Reconfigure_And_Start_DFSDM(void)
 {
-    char msg_buf[128];
-    Send_CDC_Message_Safe("DBG: Hybrid Reconfiguration Started...\r\n");
+    Send_CDC_Message_Safe("DBG: HAL-Only Reconfiguration Started...\r\n");
 
     /* ステップ1: 既存のDMAを停止 */
-    HAL_DFSDM_FilterRegularStop_DMA(&hdfsdm1_filter0);
+    if(HAL_DFSDM_FilterRegularStop_DMA(&hdfsdm1_filter0) != HAL_OK){
+        // 既に止まっている場合はHAL_ERRORが返るが、問題ないので無視する
+    }
 
-    /* ステップ2: 手動でペリフェラルをハードウェアレベルで完全に無効化 */
-    CLEAR_BIT(hdfsdm1_filter0.Instance->FLTCR1, DFSDM_FLTCR1_DFEN);
-    CLEAR_BIT(hdfsdm1_channel0.Instance->CHCFGR1, DFSDM_CHCFGR1_DFSDMEN);
-//    CLEAR_BIT(DFSDM1->CR1, DFSDM_CR1_DFSDMEN);
-    HAL_Delay(5);
+    /* ステップ2: HAL関数でペリフェラルをDeInit */
+    if(HAL_DFSDM_FilterDeInit(&hdfsdm1_filter0) != HAL_OK){
+        Send_CDC_Message_Safe("FATAL: HAL_DFSDM_FilterDeInit Failed!\r\n");
+        return HAL_ERROR;
+    }
+    if(HAL_DFSDM_ChannelDeInit(&hdfsdm1_channel0) != HAL_OK){
+        Send_CDC_Message_Safe("FATAL: HAL_DFSDM_ChannelDeInit Failed!\r\n");
+        return HAL_ERROR;
+    }
+    HAL_Delay(5); // 状態の安定を待つ
 
-    /* ステップ3: 堅牢なHALベースの再初期化を実行 */
+    /* ステップ3: HALベースの堅牢な再初期化を実行 */
     if (MX_DFSDM1_Init_Robust() != HAL_OK) {
         Send_CDC_Message_Safe("FATAL: Robust Re-Init Failed!\r\n");
         return HAL_ERROR;

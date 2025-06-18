@@ -118,6 +118,7 @@ static void Process_Command(Command_t cmd);
 static void Send_CDC_Message_Safe(const char* message);
 void CDC_On_Receive(uint8_t* Buf, uint32_t Len);
 static HAL_StatusTypeDef Reconfigure_And_Start_DFSDM(void);
+static HAL_StatusTypeDef MX_DFSDM1_Init_Robust(void);
 static void Start_Listening_Action(void);
 static void Handle_Set_Params_Command(uint8_t* cmd_payload, uint32_t payload_len);
 static uint32_t MapSincOrderNumToDefine(uint32_t order_num);
@@ -169,91 +170,147 @@ void CDC_On_Receive(uint8_t* Buf, uint32_t Len) {
 }
 
 
+//static HAL_StatusTypeDef Reconfigure_And_Start_DFSDM(void)
+//{
+//    char msg_buf[128];
+//    Send_CDC_Message_Safe("DBG: Manual Reconfiguration Started...\r\n");
+//
+//
+//    /* ステップ2: ペリフェラルをハードウェアレベルで完全に無効化 ★最重要★ */
+//    CLEAR_BIT(hdfsdm1_filter0.Instance->FLTCR1, DFSDM_FLTCR1_DFEN);
+//    CLEAR_BIT(hdfsdm1_channel0.Instance->CHCFGR1, DFSDM_CHCFGR1_DFSDMEN);
+////    CLEAR_BIT(DFSDM1->FLTCR1, DFSDM_CHCFGR1_CHEN); // DFSDM全体を無効化 (旧DFSDM_EN)
+//    HAL_Delay(1);
+//
+//    /* ステップ3: レジスタへの直接書き込みによる手動設定 */
+//    // --- チャンネル0 の設定 (CHCFGR1) ---
+//    uint32_t ch0cfgr1_val = 0;
+//    ch0cfgr1_val |= (2U << DFSDM_CHCFGR1_SITP_Pos);
+//    ch0cfgr1_val |= DFSDM_CHCFGR1_SPICKSEL_0;
+//    ch0cfgr1_val |= ((g_dfsdm_clock_divider - 1) << DFSDM_CHCFGR1_CKOUTDIV_Pos);
+//    WRITE_REG(hdfsdm1_channel0.Instance->CHCFGR1, ch0cfgr1_val);
+//
+//    // --- フィルタ 0 の設定 (FCR) ---
+//    uint32_t flt0fcr_val = 0;
+//    flt0fcr_val |= ((g_dfsdm_integrator_oversampling - 1) << DFSDM_FLTFCR_IOSR_Pos);
+//    flt0fcr_val |= ((g_dfsdm_filter_oversampling - 1)     << DFSDM_FLTFCR_FOSR_Pos);
+//    flt0fcr_val |= g_dfsdm_sinc_order;
+//    WRITE_REG(hdfsdm1_filter0.Instance->FLTFCR, flt0fcr_val);
+//
+//    // --- フィルタ 0 の制御レジスタ設定 (FLTCR1) ---
+//    uint32_t flt0cr1_val = 0;
+//    flt0cr1_val |= DFSDM_FLTCR1_FAST;
+//    flt0cr1_val |= DFSDM_FLTCR1_RDMAEN;
+////    flt0cr1_val |= DFSDM_FLTCR1_RSWSTART;
+//    // フィルタ0をチャンネル0に接続 (RCHビット)
+//    flt0cr1_val |= (DFSDM_CHANNEL_0 << DFSDM_FLTCR1_RCH_Pos);
+//    WRITE_REG(hdfsdm1_filter0.Instance->FLTCR1, flt0cr1_val);
+//
+//    /* ステップ1: 既存の動作を完全に停止 */
+//    HAL_DFSDM_FilterRegularStop_DMA(&hdfsdm1_filter0);
+////    HAL_DMA_Abort(&hdma_dfsdm1_flt0);
+//    if(HAL_DMA_DeInit(&hdma_dfsdm1_flt0) != HAL_OK){
+//    	Error_Handler();
+//    }
+//    if(HAL_DMA_Init(&hdma_dfsdm1_flt0) != HAL_OK){
+//    	Error_Handler();
+//    }
+//
+//    __HAL_LINKDMA(&hdfsdm1_filter0, hdmaReg, hdma_dfsdm1_flt0);
+//
+//
+//    /* ステップ4: ペリフェラルを有効化 */
+//    SET_BIT(hdfsdm1_channel0.Instance->CHCFGR1, DFSDM_CHCFGR1_DFSDMEN);
+//    SET_BIT(hdfsdm1_filter0.Instance->FLTCR1, DFSDM_FLTCR1_DFEN);
+////    SET_BIT(DFSDM1->CR1, DFSDM_CR1_DFSDMEN);
+//
+//
+//    /* デバッグ用：最終的なレジスタ値を表示 */
+//    uint32_t final_reg_val = READ_REG(hdfsdm1_channel0.Instance->CHCFGR1);
+//    sprintf(msg_buf, "DBG: Final CH0CFGR1 value: 0x%08lX\r\n", final_reg_val);
+//    Send_CDC_Message_Safe(msg_buf);
+//
+//    /* ステップ5: DMA転送を開始 */
+//    return HAL_DFSDM_FilterRegularStart_DMA(&hdfsdm1_filter0, audio_buffer, AUDIO_BUFFER_SIZE_SAMPLES);
+//}
+
 static HAL_StatusTypeDef Reconfigure_And_Start_DFSDM(void)
 {
     char msg_buf[128];
-    Send_CDC_Message_Safe("DBG: Manual Reconfiguration Started...\r\n");
+    Send_CDC_Message_Safe("DBG: Hybrid Reconfiguration Started...\r\n");
 
+    /* ステップ1: 既存のDMAを停止 */
+    HAL_DFSDM_FilterRegularStop_DMA(&hdfsdm1_filter0);
 
-    /* ステップ2: ペリフェラルをハードウェアレベルで完全に無効化 ★最重要★ */
+    /* ステップ2: 手動でペリフェラルをハードウェアレベルで完全に無効化 */
     CLEAR_BIT(hdfsdm1_filter0.Instance->FLTCR1, DFSDM_FLTCR1_DFEN);
     CLEAR_BIT(hdfsdm1_channel0.Instance->CHCFGR1, DFSDM_CHCFGR1_DFSDMEN);
-//    CLEAR_BIT(DFSDM1->FLTCR1, DFSDM_CHCFGR1_CHEN); // DFSDM全体を無効化 (旧DFSDM_EN)
-    HAL_Delay(1);
+//    CLEAR_BIT(DFSDM1->CR1, DFSDM_CR1_DFSDMEN);
+    HAL_Delay(5);
 
-    /* ステップ3: レジスタへの直接書き込みによる手動設定 */
-    // --- チャンネル0 の設定 (CHCFGR1) ---
-    uint32_t ch0cfgr1_val = 0;
-    ch0cfgr1_val |= (2U << DFSDM_CHCFGR1_SITP_Pos);
-    ch0cfgr1_val |= DFSDM_CHCFGR1_SPICKSEL_0;
-    ch0cfgr1_val |= ((g_dfsdm_clock_divider - 1) << DFSDM_CHCFGR1_CKOUTDIV_Pos);
-    WRITE_REG(hdfsdm1_channel0.Instance->CHCFGR1, ch0cfgr1_val);
-
-    // --- フィルタ 0 の設定 (FCR) ---
-    uint32_t flt0fcr_val = 0;
-    flt0fcr_val |= ((g_dfsdm_integrator_oversampling - 1) << DFSDM_FLTFCR_IOSR_Pos);
-    flt0fcr_val |= ((g_dfsdm_filter_oversampling - 1)     << DFSDM_FLTFCR_FOSR_Pos);
-    flt0fcr_val |= g_dfsdm_sinc_order;
-    WRITE_REG(hdfsdm1_filter0.Instance->FLTFCR, flt0fcr_val);
-
-    // --- フィルタ 0 の制御レジスタ設定 (FLTCR1) ---
-    uint32_t flt0cr1_val = 0;
-    flt0cr1_val |= DFSDM_FLTCR1_FAST;
-    flt0cr1_val |= DFSDM_FLTCR1_RDMAEN;
-//    flt0cr1_val |= DFSDM_FLTCR1_RSWSTART;
-    // フィルタ0をチャンネル0に接続 (RCHビット)
-    flt0cr1_val |= (DFSDM_CHANNEL_0 << DFSDM_FLTCR1_RCH_Pos);
-    WRITE_REG(hdfsdm1_filter0.Instance->FLTCR1, flt0cr1_val);
-
-    /* ステップ1: 既存の動作を完全に停止 */
-    HAL_DFSDM_FilterRegularStop_DMA(&hdfsdm1_filter0);
-//    HAL_DMA_Abort(&hdma_dfsdm1_flt0);
-    if(HAL_DMA_DeInit(&hdma_dfsdm1_flt0) != HAL_OK){
-    	Error_Handler();
-    }
-    if(HAL_DMA_Init(&hdma_dfsdm1_flt0) != HAL_OK){
-    	Error_Handler();
+    /* ステップ3: 堅牢なHALベースの再初期化を実行 */
+    if (MX_DFSDM1_Init_Robust() != HAL_OK) {
+        Send_CDC_Message_Safe("FATAL: Robust Re-Init Failed!\r\n");
+        return HAL_ERROR;
     }
 
-    __HAL_LINKDMA(&hdfsdm1_filter0, hdmaReg, hdma_dfsdm1_flt0);
-
-
-    /* ステップ4: ペリフェラルを有効化 */
-    SET_BIT(hdfsdm1_channel0.Instance->CHCFGR1, DFSDM_CHCFGR1_DFSDMEN);
-    SET_BIT(hdfsdm1_filter0.Instance->FLTCR1, DFSDM_FLTCR1_DFEN);
-//    SET_BIT(DFSDM1->CR1, DFSDM_CR1_DFSDMEN);
-
-
-    /* デバッグ用：最終的なレジスタ値を表示 */
-    uint32_t final_reg_val = READ_REG(hdfsdm1_channel0.Instance->CHCFGR1);
-    sprintf(msg_buf, "DBG: Final CH0CFGR1 value: 0x%08lX\r\n", final_reg_val);
-    Send_CDC_Message_Safe(msg_buf);
-
-    /* ステップ5: DMA転送を開始 */
+    /* ステップ4: DMA転送を開始 */
+    dma_full_transfer_complete_flag = 0;
     return HAL_DFSDM_FilterRegularStart_DMA(&hdfsdm1_filter0, audio_buffer, AUDIO_BUFFER_SIZE_SAMPLES);
+}
+
+static HAL_StatusTypeDef MX_DFSDM1_Init_Robust(void)
+{
+  /* チャンネルハンドルの設定 */
+  hdfsdm1_channel0.Instance = DFSDM1_Channel0;
+  hdfsdm1_channel0.Init.OutputClock.Activation = ENABLE;
+  hdfsdm1_channel0.Init.OutputClock.Selection = DFSDM_CHANNEL_OUTPUT_CLOCK_SYSTEM;
+  hdfsdm1_channel0.Init.OutputClock.Divider = g_dfsdm_clock_divider;
+  hdfsdm1_channel0.Init.Input.Multiplexer = DFSDM_CHANNEL_EXTERNAL_INPUTS;
+  hdfsdm1_channel0.Init.Input.DataPacking = DFSDM_CHANNEL_STANDARD_MODE;
+  hdfsdm1_channel0.Init.Input.Pins = DFSDM_CHANNEL_SAME_CHANNEL_PINS;
+  hdfsdm1_channel0.Init.SerialInterface.Type = DFSDM_CHANNEL_SPI_FALLING;
+  hdfsdm1_channel0.Init.SerialInterface.SpiClock = DFSDM_CHANNEL_SPI_CLOCK_INTERNAL;
+  hdfsdm1_channel0.Init.Awd.FilterOrder = DFSDM_CHANNEL_FASTSINC_ORDER;
+  hdfsdm1_channel0.Init.Awd.Oversampling = 1;
+  hdfsdm1_channel0.Init.Offset = 0;
+  hdfsdm1_channel0.Init.RightBitShift = g_dfsdm_right_bit_shift;
+  if (HAL_DFSDM_ChannelInit(&hdfsdm1_channel0) != HAL_OK) return HAL_ERROR;
+
+  /* フィルタハンドルの設定 */
+  hdfsdm1_filter0.Instance = DFSDM1_Filter0;
+  hdfsdm1_filter0.Init.RegularParam.Trigger = DFSDM_FILTER_SW_TRIGGER;
+  hdfsdm1_filter0.Init.RegularParam.FastMode = ENABLE;
+  hdfsdm1_filter0.Init.RegularParam.DmaMode = ENABLE;
+  hdfsdm1_filter0.Init.FilterParam.SincOrder = g_dfsdm_sinc_order;
+  hdfsdm1_filter0.Init.FilterParam.Oversampling = g_dfsdm_filter_oversampling;
+  hdfsdm1_filter0.Init.FilterParam.IntOversampling = g_dfsdm_integrator_oversampling;
+  if (HAL_DFSDM_FilterInit(&hdfsdm1_filter0) != HAL_OK) return HAL_ERROR;
+
+  /* フィルタとチャンネルの接続 */
+  if (HAL_DFSDM_FilterConfigRegChannel(&hdfsdm1_filter0, DFSDM_CHANNEL_0, DFSDM_CONTINUOUS_CONV_ON) != HAL_OK) return HAL_ERROR;
+
+  return HAL_OK;
 }
 
 static void Start_Listening_Action(void) {
     HAL_StatusTypeDef status;
     char msg_buf[128];
+    Send_CDC_Message_Safe("DBG: Start Listening Action started...\r\n");
 
     if (mcu_state != STATE_READY_TO_LISTEN) {
         Send_CDC_Message_Safe("Error: Not in READY state.\r\n");
         return;
     }
-
-    // ★★★ 複雑な初期化処理をすべて新しい関数に置き換え ★★★
     status = Reconfigure_And_Start_DFSDM();
 
-    sprintf(msg_buf, "DBG: Start_DMA status: %d (0=OK)\r\n", status);
+    sprintf(msg_buf, "DBG: Start_DMA final status: %d (0=OK)\r\n", status);
     Send_CDC_Message_Safe(msg_buf);
 
     if (status == HAL_OK) {
         mcu_state = STATE_LISTENING;
-        HAL_GPIO_WritePin(GPIOB, LD1_Pin, GPIO_PIN_SET);
     } else {
-        Send_CDC_Message_Safe("FATAL: Manual Reconfiguration or DMA Start Failed!\r\n");
-        mcu_state = STATE_READY_TO_LISTEN;
+        Send_CDC_Message_Safe("FATAL: Reconfigure_And_Start_DFSDM Failed!\r\n");
     }
 }
 
@@ -435,7 +492,7 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_DMA_Init();
-  MX_DFSDM1_Init();
+  if (MX_DFSDM1_Init_Robust() != HAL_OK) Error_Handler(); // 起動時も堅牢なInitを使用
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
   HAL_Delay(1000);

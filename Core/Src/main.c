@@ -107,12 +107,10 @@ volatile uint32_t g_dfsdm_right_bit_shift = 0x00;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
-static void MX_DFSDM1_Init(void);
 /* USER CODE BEGIN PFP */
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
-static void MX_DFSDM1_Init(void);
 
 static Command_t Parse_Command(uint8_t* cmd_buffer, uint32_t len);
 static void Process_Command(Command_t cmd);
@@ -761,75 +759,7 @@ void SystemClock_Config(void)
   }
 }
 
-/**
-  * @brief DFSDM1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_DFSDM1_Init(void)
-{
-  /* チャンネル -> フィルタ の順で初期化 */
 
-  /* 1. チャンネルのコンフィギュレーション（HALハンドル構造体の設定）*/
-  hdfsdm1_channel0.Instance = DFSDM1_Channel0;
-  hdfsdm1_channel0.Init.OutputClock.Activation = ENABLE;
-  hdfsdm1_channel0.Init.OutputClock.Selection = DFSDM_CHANNEL_OUTPUT_CLOCK_SYSTEM;
-  hdfsdm1_channel0.Init.Input.Multiplexer = DFSDM_CHANNEL_EXTERNAL_INPUTS;
-  hdfsdm1_channel0.Init.Input.DataPacking = DFSDM_CHANNEL_STANDARD_MODE;
-  hdfsdm1_channel0.Init.Input.Pins = DFSDM_CHANNEL_SAME_CHANNEL_PINS;
-  hdfsdm1_channel0.Init.SerialInterface.Type = DFSDM_CHANNEL_SPI_FALLING;
-  hdfsdm1_channel0.Init.SerialInterface.SpiClock = DFSDM_CHANNEL_SPI_CLOCK_INTERNAL;
-  hdfsdm1_channel0.Init.Awd.FilterOrder = DFSDM_CHANNEL_FASTSINC_ORDER;
-  hdfsdm1_channel0.Init.Awd.Oversampling = 1;
-  hdfsdm1_channel0.Init.Offset = 0;
-  hdfsdm1_channel0.Init.OutputClock.Divider = g_dfsdm_clock_divider;
-  hdfsdm1_channel0.Init.RightBitShift = g_dfsdm_right_bit_shift;
-
-  // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-  // ★★★ ここが最終防衛ライン：HALを呼び出す前に、問題のレジスタを直接書き込む ★★★
-
-  // 1. DeInit後なのでチャンネルは無効のはずだが、念のため手動で無効化(DFSDMEN=0)する
-  CLEAR_BIT(hdfsdm1_channel0.Instance->CHCFGR1, DFSDM_CHCFGR1_DFSDMEN);
-
-  // 2. CKOUTDIVの値を直接書き込む
-  MODIFY_REG(hdfsdm1_channel0.Instance->CHCFGR1,
-             DFSDM_CHCFGR1_CKOUTDIV,
-             (g_dfsdm_clock_divider - 1) << DFSDM_CHCFGR1_CKOUTDIV_Pos);
-
-  // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-
-  /* 2. チャンネルの初期化（HAL関数）*/
-  // HALには、CKOUTDIV以外の設定と、最終的なチャンネル有効化を任せる
-//  if (HAL_DFSDM_ChannelInit(&hdfsdm1_channel0) != HAL_OK)
-//  {
-//    Error_Handler();
-//  }
-
-  /* 3. フィルタの初期化 */
-  hdfsdm1_filter0.Instance = DFSDM1_Filter0;
-  hdfsdm1_filter0.Init.RegularParam.Trigger = DFSDM_FILTER_SW_TRIGGER;
-  hdfsdm1_filter0.Init.RegularParam.FastMode = ENABLE;
-  hdfsdm1_filter0.Init.RegularParam.DmaMode = ENABLE;
-  hdfsdm1_filter0.Init.FilterParam.SincOrder = g_dfsdm_sinc_order;
-  hdfsdm1_filter0.Init.FilterParam.Oversampling = g_dfsdm_filter_oversampling;
-  hdfsdm1_filter0.Init.FilterParam.IntOversampling = g_dfsdm_integrator_oversampling;
-
-  if (HAL_DFSDM_FilterInit(&hdfsdm1_filter0) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  if (HAL_DFSDM_ChannelInit(&hdfsdm1_channel0) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /* 4. フィルタとチャンネルを接続 */
-  if (HAL_DFSDM_FilterConfigRegChannel(&hdfsdm1_filter0, DFSDM_CHANNEL_0, DFSDM_CONTINUOUS_CONV_ON) != HAL_OK)
-  {
-    Error_Handler();
-  }
-}
 
 /**
   * Enable DMA controller clock

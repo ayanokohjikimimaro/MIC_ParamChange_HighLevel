@@ -286,6 +286,8 @@ static HAL_StatusTypeDef Reconfigure_And_Start_DFSDM(void)
         return HAL_ERROR;
     }
 
+    HAL_Delay(10);  // 初期値安定のための待ち
+
     /* ステップ4: DMA転送を開始 */
     dma_full_transfer_complete_flag = 0;
     return HAL_DFSDM_FilterRegularStart_DMA(&hdfsdm1_filter0, audio_buffer, AUDIO_BUFFER_SIZE_SAMPLES);
@@ -293,6 +295,16 @@ static HAL_StatusTypeDef Reconfigure_And_Start_DFSDM(void)
 
 static HAL_StatusTypeDef MX_DFSDM1_Init_Robust(void)
 {
+  /* フィルタハンドルの設定 */
+  hdfsdm1_filter0.Instance = DFSDM1_Filter0;
+  hdfsdm1_filter0.Init.RegularParam.Trigger = DFSDM_FILTER_SW_TRIGGER;
+  hdfsdm1_filter0.Init.RegularParam.FastMode = ENABLE;
+  hdfsdm1_filter0.Init.RegularParam.DmaMode = ENABLE;
+  hdfsdm1_filter0.Init.FilterParam.SincOrder = g_dfsdm_sinc_order;
+  hdfsdm1_filter0.Init.FilterParam.Oversampling = g_dfsdm_filter_oversampling;
+  hdfsdm1_filter0.Init.FilterParam.IntOversampling = g_dfsdm_integrator_oversampling;
+  if (HAL_DFSDM_FilterInit(&hdfsdm1_filter0) != HAL_OK) return HAL_ERROR;
+
   /* チャンネルハンドルの設定 */
   hdfsdm1_channel0.Instance = DFSDM1_Channel0;
   hdfsdm1_channel0.Init.OutputClock.Activation = ENABLE;
@@ -307,17 +319,14 @@ static HAL_StatusTypeDef MX_DFSDM1_Init_Robust(void)
   hdfsdm1_channel0.Init.Awd.Oversampling = 1;
   hdfsdm1_channel0.Init.Offset = 0;
   hdfsdm1_channel0.Init.RightBitShift = g_dfsdm_right_bit_shift;
-  if (HAL_DFSDM_ChannelInit(&hdfsdm1_channel0) != HAL_OK) return HAL_ERROR;
 
-  /* フィルタハンドルの設定 */
-  hdfsdm1_filter0.Instance = DFSDM1_Filter0;
-  hdfsdm1_filter0.Init.RegularParam.Trigger = DFSDM_FILTER_SW_TRIGGER;
-  hdfsdm1_filter0.Init.RegularParam.FastMode = ENABLE;
-  hdfsdm1_filter0.Init.RegularParam.DmaMode = ENABLE;
-  hdfsdm1_filter0.Init.FilterParam.SincOrder = g_dfsdm_sinc_order;
-  hdfsdm1_filter0.Init.FilterParam.Oversampling = g_dfsdm_filter_oversampling;
-  hdfsdm1_filter0.Init.FilterParam.IntOversampling = g_dfsdm_integrator_oversampling;
-  if (HAL_DFSDM_FilterInit(&hdfsdm1_filter0) != HAL_OK) return HAL_ERROR;
+
+  CLEAR_BIT(hdfsdm1_channel0.Instance->CHCFGR1, DFSDM_CHCFGR1_DFSDMEN);
+  MODIFY_REG(hdfsdm1_channel0.Instance->CHCFGR1,
+		  DFSDM_CHCFGR1_CKOUTDIV,
+		  (g_dfsdm_clock_divider-1)<<DFSDM_CHCFGR1_CKOUTDIV_Pos);
+
+  if (HAL_DFSDM_ChannelInit(&hdfsdm1_channel0) != HAL_OK) return HAL_ERROR;
 
   /* フィルタとチャンネルの接続 */
   if (HAL_DFSDM_FilterConfigRegChannel(&hdfsdm1_filter0, DFSDM_CHANNEL_0, DFSDM_CONTINUOUS_CONV_ON) != HAL_OK) return HAL_ERROR;

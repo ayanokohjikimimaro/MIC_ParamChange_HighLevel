@@ -48,10 +48,10 @@ typedef enum {
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define AUDIO_SAMPLING_FREQUENCY 16000
+//#define AUDIO_SAMPLING_FREQUENCY 16000
 // #define AUDIO_BUFFER_SIZE_BYTES (64 * 1024)
-#define AUDIO_BUFFER_SIZE_BYTES (250 * 1024) // For testing with 300KB
-#define AUDIO_BUFFER_SIZE_SAMPLES (AUDIO_BUFFER_SIZE_BYTES / sizeof(int32_t))
+#define AUDIO_BUFFER_SIZE_BYTES (65535*4)
+#define AUDIO_BUFFER_SIZE_SAMPLES (AUDIO_BUFFER_SIZE_BYTES / sizeof(int32_t))  // DMA_SxNDTR)」が16ビット幅 --> 2^16-1 = 65535 がノーマルモードでのデータ転送数の上限
 
 #define CMD_BUFFER_SIZE 64
 #define CDC_TX_CHUNK_SIZE (16 * 1024)
@@ -892,7 +892,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
         last_button_press_time = HAL_GetTick();
         if (mcu_state == STATE_READY_TO_LISTEN) {
             user_button_pressed_flag = 1;
-            Send_CDC_Message_Safe("DBG: User button pressed, flag set.\r\n");
+//            Send_CDC_Message_Safe("DBG: User button pressed, flag set.\r\n");
         } else {
             Send_CDC_Message_Safe("DBG: User button pressed, but not in READY state. Ignored.\r\n");
         }

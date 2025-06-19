@@ -286,7 +286,8 @@ static HAL_StatusTypeDef Reconfigure_And_Start_DFSDM(void)
         return HAL_ERROR;
     }
 
-    HAL_Delay(10);  // 初期値安定のための待ち
+    HAL_Delay(1000);  // 初期値安定のための待ち
+    HAL_Delay(1000);  // 初期値安定のための待ち
 
     /* ステップ4: DMA転送を開始 */
     dma_full_transfer_complete_flag = 0;
